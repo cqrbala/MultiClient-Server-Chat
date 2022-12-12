@@ -1,20 +1,17 @@
-#include <stdio.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
+#include "socketutil.h"
+#include "socketutil.c"
+
+void create_listening_thread(int socketfd);
+void recieve_and_print(int socketfd);
+void read_userinput(int socketfd);
 
 int main()
 {
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int socket_fd = createSocket();
 
-    char *ip = "142.250.188.46";
-    struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_port = htons(80);
-    inet_pton(AF_INET, ip, &address.sin_addr.s_addr);
+    struct sockaddr_in *address = createAddress("127.0.0.1", 2000);
 
-    int connect_status = connect(socket_fd, &address, sizeof(address));
+    int connect_status = connect(socket_fd, address, sizeof(*address));
 
     if (connect_status == 0)
     {
@@ -22,18 +19,75 @@ int main()
     }
     else
     {
-        printf("retard\n");
+        printf("Connection failed\n");
+        return 0;
     }
 
-    char *message;
-    message = "GET \\ HTTP/1.1\r\nHost:google.com\r\n\r\n";
+    create_listening_thread(socket_fd);
+    read_userinput(socket_fd);
 
-    send(socket_fd, message, strlen(message), 0);
-
-    char *buffer[1024];
-    recv(socket_fd, buffer, 1024, 0);
-
-    printf("%s\n", buffer);
-
+    close(socket_fd);
     return 0;
+}
+
+void create_listening_thread(int socketfd)
+{
+    pthread_t id;
+    pthread_create(&id, NULL, recieve_and_print, socketfd);
+}
+
+void recieve_and_print(int socketfd)
+{
+    char buffer[1024];
+
+    while (true)
+    {
+        ssize_t server_message_size = recv(socketfd, buffer, 1024, 0);
+
+        if (server_message_size > 0)
+        {
+            buffer[server_message_size] = '\0';
+            printf("%s", buffer);
+        }
+
+        if (server_message_size == 0)
+            break;
+    }
+
+    close(socketfd);
+}
+
+void read_userinput(int socketfd)
+{
+    char *name = NULL;
+    size_t nameSize = 0;
+    printf("Enter your name:\n");
+    ssize_t name_char_count = getline(&name, &nameSize, stdin);
+    name[name_char_count - 1] = '\0';
+
+    printf("Start typing messages!\n");
+
+    char *user_input = NULL;
+    size_t user_input_size = 0;
+
+    char buffer[3000];
+
+    while (true)
+    {
+        size_t input_count = getline(&user_input, &user_input_size, stdin);
+
+        if (input_count > 0)
+        {
+            if (strcmp(user_input, "cqrout\n") == 0)
+            {
+                break;
+            }
+            else
+            {
+
+                sprintf(buffer, "%s:%s", name, user_input);
+                send(socketfd, buffer, strlen(buffer), 0);
+            }
+        }
+    }
 }
